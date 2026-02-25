@@ -1,0 +1,61 @@
+{
+  "expo": {
+    "name": "VEditor",
+    "slug": "v-editor-expo",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0A0A0F"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.veditor.app",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "VEditor needs access to your photo library to import videos for editing and save exported videos.",
+        "NSPhotoLibraryAddUsageDescription": "VEditor needs permission to save exported videos to your photo library.",
+        "NSMicrophoneUsageDescription": "VEditor needs microphone access for audio recording features."
+      },
+      "deploymentTarget": "15.0"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0A0A0F"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "package": "com.veditor.app",
+      "permissions": [
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_AUDIO",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-sqlite",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "VEditor needs photo library access to save exported videos.",
+          "savePhotosPermission": "VEditor needs to save exported videos to your gallery.",
+          "isAccessMediaLocationEnabled": true
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "VEditor needs access to your videos for editing."
+        }
+      ]
+    ]
+  }
+}
