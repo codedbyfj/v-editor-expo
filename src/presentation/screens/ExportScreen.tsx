@@ -7,6 +7,7 @@ import {
     Alert,
     ActivityIndicator,
     Dimensions,
+    Platform,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as MediaLibrary from 'expo-media-library';
@@ -48,6 +49,10 @@ export default function ExportScreen() {
     const [exportedPath, setExportedPath] = useState<string | null>(null);
 
     const handleExport = async () => {
+        if (Platform.OS === 'web') {
+            Alert.alert('Not Available', 'Export requires a native device build.');
+            return;
+        }
         setExporting(true);
         setProgress(0);
 

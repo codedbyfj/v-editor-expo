@@ -11,6 +11,7 @@ import {
     Modal,
     Dimensions,
     Image,
+    Platform,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as ImagePicker from 'expo-image-picker';
@@ -20,9 +21,14 @@ import { Colors, Typography, Spacing, BorderRadius, Shadows } from '../theme';
 import { ProjectRepository } from '../../infrastructure/database';
 import { FileManager } from '../../infrastructure/filesystem';
 import { Project } from '../../domain/entities';
+import { v4 as uuidv4 } from 'uuid';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const projectRepo = new ProjectRepository();
+
+// In-memory fallback for web (expo-sqlite doesn't support web bundling)
+let webProjects: Project[] = [];
+const isWeb = Platform.OS === 'web';
 
 type RootStackParamList = {
     Home: undefined;
@@ -41,10 +47,14 @@ export default function HomeScreen() {
 
     const loadProjects = useCallback(async () => {
         try {
-            await projectRepo.initialize();
-            await FileManager.initialize();
-            const allProjects = await projectRepo.getAll();
-            setProjects(allProjects);
+            if (isWeb) {
+                setProjects([...webProjects]);
+            } else {
+                await projectRepo.initialize();
+                await FileManager.initialize();
+                const allProjects = await projectRepo.getAll();
+                setProjects(allProjects);
+            }
         } catch (error) {
             console.error('Failed to load projects:', error);
         } finally {
@@ -66,11 +76,20 @@ export default function HomeScreen() {
     const handleCreateProject = async () => {
         const name = newProjectName.trim() || `Project ${projects.length + 1}`;
         try {
-            const project = await projectRepo.create({ name });
-            await FileManager.initProjectDir(project.id);
-            setModalVisible(false);
-            setNewProjectName('');
-            navigation.navigate('Editor', { projectId: project.id });
+            if (isWeb) {
+                const now = Date.now();
+                const project: Project = { id: uuidv4(), name, createdAt: now, updatedAt: now };
+                webProjects.unshift(project);
+                setModalVisible(false);
+                setNewProjectName('');
+                navigation.navigate('Editor', { projectId: project.id });
+            } else {
+                const project = await projectRepo.create({ name });
+                await FileManager.initProjectDir(project.id);
+                setModalVisible(false);
+                setNewProjectName('');
+                navigation.navigate('Editor', { projectId: project.id });
+            }
         } catch (error) {
             Alert.alert('Error', 'Failed to create project');
         }

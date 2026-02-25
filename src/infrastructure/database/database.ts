@@ -1,17 +1,31 @@
-import * as SQLite from 'expo-sqlite';
+import { Platform } from 'react-native';
 
-let db: SQLite.SQLiteDatabase | null = null;
+let db: any = null;
+let SQLite: any = null;
 
-export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
-    if (db) return db;
+// Only import expo-sqlite on native platforms (not web)
+async function getSQLiteModule() {
+  if (!SQLite && Platform.OS !== 'web') {
+    SQLite = require('expo-sqlite');
+  }
+  return SQLite;
+}
 
-    db = await SQLite.openDatabaseAsync('veditor.db');
+export async function getDatabase(): Promise<any> {
+  if (Platform.OS === 'web') {
+    throw new Error('SQLite is not supported on web');
+  }
 
-    // Enable WAL mode for better concurrent performance
-    await db.execAsync('PRAGMA journal_mode = WAL;');
+  if (db) return db;
 
-    // Create tables
-    await db.execAsync(`
+  const sqlite = await getSQLiteModule();
+  db = await sqlite.openDatabaseAsync('veditor.db');
+
+  // Enable WAL mode for better concurrent performance
+  await db.execAsync('PRAGMA journal_mode = WAL;');
+
+  // Create tables
+  await db.execAsync(`
     CREATE TABLE IF NOT EXISTS projects (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -45,12 +59,12 @@ export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
     CREATE INDEX IF NOT EXISTS idx_layers_project ON layers(project_id);
   `);
 
-    return db;
+  return db;
 }
 
 export async function closeDatabase(): Promise<void> {
-    if (db) {
-        await db.closeAsync();
-        db = null;
-    }
+  if (db) {
+    await db.closeAsync();
+    db = null;
+  }
 }

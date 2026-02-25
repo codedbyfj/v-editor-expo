@@ -8,6 +8,7 @@ import {
     ActivityIndicator,
     Dimensions,
     ScrollView,
+    Platform,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
@@ -22,7 +23,7 @@ import { Project, Clip } from '../../domain/entities';
 import Timeline from '../components/Timeline';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const PLAYER_HEIGHT = SCREEN_WIDTH * 0.5625; // 16:9
+const PLAYER_HEIGHT = Math.min(SCREEN_WIDTH * 0.5625, SCREEN_HEIGHT * 0.35); // 16:9 but capped at 35% screen
 
 const projectRepo = new ProjectRepository();
 const clipRepo = new ClipRepository();
@@ -53,10 +54,16 @@ export default function EditorScreen() {
 
     const loadProjectData = useCallback(async () => {
         try {
-            const p = await projectRepo.getById(projectId);
-            const c = await clipRepo.getByProjectId(projectId);
-            setProject(p);
-            setClips(c);
+            if (Platform.OS === 'web') {
+                // On web, just show the UI shell without SQLite
+                setProject({ id: projectId, name: 'Editor Preview', createdAt: Date.now(), updatedAt: Date.now() });
+                setClips([]);
+            } else {
+                const p = await projectRepo.getById(projectId);
+                const c = await clipRepo.getByProjectId(projectId);
+                setProject(p);
+                setClips(c);
+            }
         } catch (error) {
             console.error('Failed to load project:', error);
         } finally {
@@ -70,10 +77,12 @@ export default function EditorScreen() {
 
     const handleImportVideo = async () => {
         try {
-            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-            if (status !== 'granted') {
-                Alert.alert('Permission Required', 'Please grant media library access to import videos.');
-                return;
+            if (Platform.OS !== 'web') {
+                const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                if (status !== 'granted') {
+                    Alert.alert('Permission Required', 'Please grant media library access to import videos.');
+                    return;
+                }
             }
 
             const result = await ImagePicker.launchImageLibraryAsync({
@@ -88,47 +97,59 @@ export default function EditorScreen() {
             const asset = result.assets[0];
             const sourcePath = asset.uri;
 
-            // Copy source to project directory
-            const localPath = await FileManager.copySourceToProject(sourcePath, projectId);
+            if (Platform.OS === 'web') {
+                // Web: create in-memory clip directly from the picked URI
+                const duration = (asset.duration || 30000) / 1000;
+                const webClip: Clip = {
+                    id: `clip_${Date.now()}`,
+                    projectId,
+                    sourcePath: sourcePath,
+                    startTime: 0,
+                    endTime: duration,
+                    duration,
+                    order: clips.length,
+                };
+                setClips((prev) => [...prev, webClip]);
+                setCurrentClipIndex(clips.length);
+                setImporting(false);
+            } else {
+                // Native: full flow with file copy, proxy, thumbnail, DB
+                const localPath = await FileManager.copySourceToProject(sourcePath, projectId);
 
-            // Get media info
-            let duration = asset.duration || 0;
-            try {
-                const info = await VideoProcessor.probeMedia(localPath);
-                duration = info.duration;
-            } catch {
-                // FFmpegKit may not be available yet; use asset duration
-                duration = (asset.duration || 10000) / 1000;
+                let duration = asset.duration || 0;
+                try {
+                    const info = await VideoProcessor.probeMedia(localPath);
+                    duration = info.duration;
+                } catch {
+                    duration = (asset.duration || 10000) / 1000;
+                }
+
+                const clip = await clipRepo.create({
+                    projectId,
+                    sourcePath: localPath,
+                    startTime: 0,
+                    endTime: duration,
+                    duration,
+                    order: clips.length,
+                });
+
+                try {
+                    const proxyPath = await VideoProcessor.generateProxy(localPath, projectId);
+                    const thumbPath = await VideoProcessor.extractThumbnail(localPath, projectId);
+                    clip.proxyPath = proxyPath;
+                    clip.thumbnailPath = thumbPath;
+                    await clipRepo.update(clip);
+                } catch {
+                    console.warn('Proxy/thumbnail generation skipped');
+                }
+
+                if (project) {
+                    await projectRepo.update(project);
+                }
+
+                setImporting(false);
+                loadProjectData();
             }
-
-            // Create clip record
-            const clip = await clipRepo.create({
-                projectId,
-                sourcePath: localPath,
-                startTime: 0,
-                endTime: duration,
-                duration,
-                order: clips.length,
-            });
-
-            // Try to generate proxy + thumbnail (non-blocking if FFmpeg unavailable)
-            try {
-                const proxyPath = await VideoProcessor.generateProxy(localPath, projectId);
-                const thumbPath = await VideoProcessor.extractThumbnail(localPath, projectId);
-                clip.proxyPath = proxyPath;
-                clip.thumbnailPath = thumbPath;
-                await clipRepo.update(clip);
-            } catch {
-                console.warn('Proxy/thumbnail generation skipped (FFmpegKit not available)');
-            }
-
-            // Update project timestamp
-            if (project) {
-                await projectRepo.update(project);
-            }
-
-            setImporting(false);
-            loadProjectData();
         } catch (error) {
             setImporting(false);
             Alert.alert('Import Failed', 'Could not import the selected video.');
@@ -333,9 +354,10 @@ const styles = StyleSheet.create({
         fontSize: 14,
     },
     playerContainer: {
-        width: SCREEN_WIDTH,
+        width: '100%',
         height: PLAYER_HEIGHT,
         backgroundColor: '#000',
+        overflow: 'hidden',
     },
     player: {
         width: '100%',
